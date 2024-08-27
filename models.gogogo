@@ -1,0 +1,53 @@
+package main
+
+import (
+	"database/sql"
+	"encoding/json"
+)
+
+// Author represents an author in the library system.
+type Author struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// Book represents a book in the library system, with custom JSON marshalling.
+type Book struct {
+	ISBN     string         `json:"isbn"`
+	Title    string         `json:"title"`
+	Subtitle sql.NullString `json:"subtitle"` // Nullable subtitle
+	Year     sql.NullInt64  `json:"year"`     // Nullable year
+	ImgURL   sql.NullString `json:"imgURL"`   // Nullable image URL
+	Authors  []Author       `json:"authors"`
+}
+
+// MarshalJSON customizes the JSON output for the Book struct.
+func (b Book) MarshalJSON() ([]byte, error) {
+	type Alias Book
+	return json.Marshal(&struct {
+		Subtitle *string `json:"subtitle,omitempty"`
+		Year     *int64  `json:"year,omitempty"`
+		ImgURL   *string `json:"imgURL,omitempty"`
+		Alias
+	}{
+		Subtitle: ifNullString(b.Subtitle),
+		Year:     ifNullInt64(b.Year),
+		ImgURL:   ifNullString(b.ImgURL),
+		Alias:    (Alias)(b),
+	})
+}
+
+// Helper functions to handle nullable types.
+func ifNullString(ns sql.NullString) *string {
+	if ns.Valid {
+		return &ns.String
+	}
+	return nil
+}
+
+func ifNullInt64(ni sql.NullInt64) *int64 {
+	if ni.Valid {
+		return &ni.Int64
+	}
+	return nil
+}
