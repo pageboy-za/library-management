@@ -18,8 +18,8 @@ type Book struct {
 	Title    string         `json:"title"`
 	Subtitle sql.NullString `json:"subtitle"`
 	Year     sql.NullInt64  `json:"year"`
-	ImgURL   sql.NullString `json:"imgURL"`
-	Authors  []Author       `json:"authors"`
+	CoverURL sql.NullString `json:"cover_url"`
+	Authors  string         `json:"authors"` // Concatenated author names as a single string
 }
 
 func (b Book) MarshalJSON() ([]byte, error) {
@@ -27,12 +27,12 @@ func (b Book) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Subtitle *string `json:"subtitle,omitempty"`
 		Year     *int64  `json:"year,omitempty"`
-		ImgURL   *string `json:"imgURL,omitempty"`
+		CoverURL *string `json:"cover_url,omitempty"`
 		Alias
 	}{
 		Subtitle: ifNullString(b.Subtitle),
 		Year:     ifNullInt64(b.Year),
-		ImgURL:   ifNullString(b.ImgURL),
+		CoverURL: ifNullString(b.CoverURL),
 		Alias:    (Alias)(b),
 	})
 }
@@ -70,7 +70,7 @@ func createTables(db *sql.DB) error {
         title TEXT NOT NULL,
         subtitle TEXT,
         year INTEGER,
-        imgURL TEXT
+        cover_url TEXT
     );`
 
 	createAuthorsTable := `CREATE TABLE IF NOT EXISTS authors (
@@ -78,7 +78,7 @@ func createTables(db *sql.DB) error {
         name TEXT NOT NULL
     );`
 
-	createBookAuthorsTable := `CREATE TABLE IF NOT EXISTS book_authors (
+	createBookAuthorsTable := `CREATE TABLE IF NOT EXISTS BookAuthors (
         book_isbn TEXT NOT NULL,
         author_id INTEGER NOT NULL,
         FOREIGN KEY (book_isbn) REFERENCES books(isbn),
@@ -98,7 +98,7 @@ func createTables(db *sql.DB) error {
 
 	_, err = db.Exec(createBookAuthorsTable)
 	if err != nil {
-		return fmt.Errorf("error creating book_authors table: %v", err)
+		return fmt.Errorf("error creating BookAuthors table: %v", err)
 	}
 
 	return nil

@@ -1,0 +1,97 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strconv"
+	"strings"
+)
+
+type Book struct {
+	ISBN     string   `json:"isbn"`
+	Title    string   `json:"title"`
+	Subtitle string   `json:"subtitle"`
+	Authors  []string `json:"authors"`
+	Year     int64    `json:"year"`
+	CoverURL string   `json:"cover_url"`
+}
+
+// LookupBookByISBN takes an ISBN as input, fetches book information, and returns a Book object.
+func LookupBookByISBN(isbn string) (*Book, error) {
+	// Construct the Open Library API URL with the given ISBN
+	apiURL := fmt.Sprintf("https://openlibrary.org/api/books?bibkeys=ISBN:%s&format=json&jscmd=data", isbn)
+	resp, err := http.Get(apiURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse the JSON response
+	var result map[string]interface{}
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract the specific book data using the ISBN as the key
+	bookData, ok := result["ISBN:"+isbn].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("no book data found for ISBN: %s", isbn)
+	}
+
+	// Extract book details
+	title, _ := bookData["title"].(string)
+	subtitle, _ := bookData["subtitle"].(string)
+
+	// Extract and parse publish date to extract year
+	yearStr, _ := bookData["publish_date"].(string)
+	var year int64
+	if yearStr != "" {
+		// Split the year out from the publish_date string
+		splitYear := strings.Split(yearStr, " ")
+		year, err = strconv.ParseInt(splitYear[len(splitYear)-1], 10, 64)
+		if err != nil {
+			// If parsing fails, default year to 0
+			year = 0
+		}
+	}
+
+	// Extract authors
+	var authors []string
+	if authorsData, ok := bookData["authors"].([]interface{}); ok {
+		for _, author := range authorsData {
+			authorName, _ := author.(map[string]interface{})["name"].(string)
+			authors = append(authors, authorName)
+		}
+	}
+
+	// Extract cover URL
+	var coverURL string
+	if coverData, ok := bookData["cover"].(map[string]interface{}); ok {
+		if large, ok := coverData["large"].(string); ok {
+			coverURL = large
+		} else if medium, ok := coverData["medium"].(string); ok {
+			coverURL = medium
+		} else if small, ok := coverData["small"].(string); ok {
+			coverURL = small
+		}
+	}
+
+	// Return the populated Book struct
+	return &Book{
+		ISBN:     isbn,
+		Title:    title,
+		Subtitle: subtitle,
+		Authors:  authors,
+		Year:     year,
+		CoverURL: coverURL,
+	}, nil
+}

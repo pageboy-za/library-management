@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -53,7 +54,7 @@ func submitBookHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 	isbn := r.FormValue("isbn")
 	title := r.FormValue("title")
 	yearStr := r.FormValue("year")
-	imgURL := r.FormValue("imgURL")
+	coverURL := r.FormValue("cover_url")
 	authorNames := strings.Split(r.FormValue("authors"), ",")
 
 	var year sql.NullInt64
@@ -68,14 +69,14 @@ func submitBookHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 		year = sql.NullInt64{Valid: false}
 	}
 
-	var imgURLNullable sql.NullString
-	if imgURL != "" {
-		imgURLNullable = sql.NullString{String: imgURL, Valid: true}
+	var coverURLNullable sql.NullString
+	if coverURL != "" {
+		coverURLNullable = sql.NullString{String: coverURL, Valid: true}
 	} else {
-		imgURLNullable = sql.NullString{Valid: false}
+		coverURLNullable = sql.NullString{Valid: false}
 	}
 
-	if err := insertBookWithAuthors(db, isbn, title, year, imgURLNullable, authorNames); err != nil {
+	if err := insertBookWithAuthors(db, isbn, title, year, coverURLNullable, authorNames); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -84,33 +85,29 @@ func submitBookHandler(w http.ResponseWriter, r *http.Request, db *sql.DB) {
 }
 
 func getAllBooks(db *sql.DB) ([]Book, error) {
-	rows, err := db.Query("SELECT isbn, title, subtitle, year, imgURL FROM books")
+	bookQuery := `SELECT
+            isbn,
+            title,
+            subtitle,
+            year,
+            cover_url,
+        FROM
+            books 
+			id`
+
+	rows, err := db.Query(bookQuery)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	var books []Book
-	for rows.Next() {
-		var book Book
-		if err := rows.Scan(&book.ISBN, &book.Title, &book.Subtitle, &book.Year, &book.ImgURL); err != nil {
-			return nil, err
-		}
-
-		authors, err := getAuthorsForBook(db, book.ISBN)
-		if err != nil {
-			return nil, err
-		}
-		book.Authors = authors
-
-		books = append(books, book)
-	}
 
 	return books, nil
 }
 
 func getAllIsbns(db *sql.DB) ([]string, error) {
-	rows, err := db.Query("SELECT isbn FROM books")
+	rows, err := db.Query("SELECT isbn FROM Books")
 	if err != nil {
 		return nil, err
 	}
@@ -127,29 +124,54 @@ func getAllIsbns(db *sql.DB) ([]string, error) {
 
 	return isbns, nil
 }
+
 func getBook(db *sql.DB, isbn string) (Book, error) {
 	var book Book
-	err := db.QueryRow("SELECT isbn, title, subtitle, year, imgURL FROM books WHERE isbn = ?", isbn).Scan(
-		&book.ISBN, &book.Title, &book.Subtitle, &book.Year, &book.ImgURL)
-	if err != nil {
-		return Book{}, err
-	}
 
-	authors, err := getAuthorsForBook(db, book.ISBN)
+	query := `
+        SELECT
+            b.isbn,
+            b.title,
+            b.subtitle,
+            b.year,
+            b.cover_url,
+            GROUP_CONCAT(a.name, ', ') AS authors
+        FROM
+            books b
+        JOIN
+            BookAuthors ba ON b.id = ba.book_id
+        JOIN
+            authors a ON ba.author_id = a.id
+        WHERE
+            b.isbn = ?
+        GROUP BY
+            b.isbn;
+    `
+	err := db.QueryRow(query, isbn).Scan(
+		// &book.ID,
+		&book.ISBN,
+		&book.Title,
+		&book.Subtitle,
+		&book.Year,
+		&book.CoverURL,
+		&book.Authors,
+	)
 	if err != nil {
-		return Book{}, err
+		if err == sql.ErrNoRows {
+			return book, fmt.Errorf("book not found")
+		}
+		return book, err
 	}
-	book.Authors = authors
 
 	return book, nil
 }
 
-func getAuthorsForBook(db *sql.DB, isbn string) ([]Author, error) {
+func getAuthorsForBook(db *sql.DB, id string) ([]Author, error) {
 	rows, err := db.Query(`
-           SELECT a.id, a.name 
+           SELECT a.id, a.name
     FROM authors a
-    JOIN book_authors ba ON a.id = ba.author_id
-    WHERE ba.book_isbn = ?`, isbn)
+    JOIN BookAuthors ba ON a.id = ba.author_id
+    WHERE ba.book_id = ?`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -167,13 +189,13 @@ func getAuthorsForBook(db *sql.DB, isbn string) ([]Author, error) {
 	return authors, nil
 }
 
-func insertBookWithAuthors(db *sql.DB, isbn, title string, year sql.NullInt64, imgURL sql.NullString, authorNames []string) error {
+func insertBookWithAuthors(db *sql.DB, isbn, title string, year sql.NullInt64, coverURL sql.NullString, authorNames []string) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
 
-	_, err = tx.Exec("INSERT INTO books (isbn, title, year, imgURL) VALUES (?, ?, ?, ?)", isbn, title, year, imgURL)
+	_, err = tx.Exec("INSERT INTO books (isbn, title, year, cover_url) VALUES (?, ?, ?, ?)", isbn, title, year, coverURL)
 	if err != nil {
 		tx.Rollback()
 		return err

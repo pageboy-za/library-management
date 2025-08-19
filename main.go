@@ -38,13 +38,13 @@ func main() {
 		}
 	})
 
-	http.HandleFunc("/submit-book", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
-			submitBookHandler(w, r, db)
-		} else {
-			http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
-		}
-	})
+	// http.HandleFunc("/submit-book", func(w http.ResponseWriter, r *http.Request) {
+	// 	if r.Method == http.MethodPost {
+	// 		submitBookHandler(w, r, db)
+	// 	} else {
+	// 		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+	// 	}
+	// })
 
 	http.HandleFunc("/isbns", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
